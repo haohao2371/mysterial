@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  # ── Neo4j graph database ─────────────────────────────────────────────
+  neo4j:
+    image: neo4j:5.17-community
+    container_name: mysterial-neo4j
+    environment:
+      NEO4J_AUTH: neo4j/password
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
+    ports:
+      - "7474:7474"   # HTTP browser
+      - "7687:7687"   # Bolt
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7474"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Qdrant vector database ───────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:v1.8.4
+    container_name: mysterial-qdrant
+    ports:
+      - "6333:6333"   # REST
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:6333/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Mysterial API + MCP gateway ──────────────────────────────────────
+  api:
+    build: .
+    container_name: mysterial-api
+    env_file: .env
+    environment:
+      NEO4J_URI: bolt://neo4j:7687
+      QDRANT_HOST: qdrant
+    ports:
+      - "8000:8000"
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    command: uvicorn mysterial.api.app:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  neo4j_data:
+  qdrant_data:
